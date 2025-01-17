@@ -51,12 +51,18 @@ async fn main(spawner: Spawner) -> ! {
         .unwrap()
     );
 
+    // TODO(sarah): is this more correct than systimer.alarm0?
+    // x-ref https://github.com/esp-rs/esp-hal/blob/main/examples/src/bin/wifi_embassy_dhcp.rs#L73
+    // let timg1 = TimerGroup::new(peripherals.TIMG1);
+    // esp_hal_embassy::init(timg1.timer0);
+
     use esp_hal::timer::systimer::SystemTimer;
     let systimer =
         SystemTimer::new(peripherals.SYSTIMER).split::<esp_hal::timer::systimer::Target>();
     esp_hal_embassy::init(systimer.alarm0);
 
     let wifi = peripherals.WIFI;
+    // Is changing the below to &init a no-op?
     let (wifi_interface, mut controller) =
         esp_wifi::wifi::new_with_mode(init, wifi, WifiStaDevice).unwrap();
 
@@ -65,6 +71,7 @@ async fn main(spawner: Spawner) -> ! {
     // Init network stack
     let seed = 1234; // very random, very secure seed
     let net_config = embassy_net::Config::dhcpv4(Default::default());
+    // Should this be embassy_net::new like in https://github.com/esp-rs/esp-hal/blob/main/examples/src/bin/wifi_embassy_dhcp.rs ?
     let stack = &*mk_static!(
         Stack<WifiDevice<'_, WifiStaDevice>>,
         Stack::new(
