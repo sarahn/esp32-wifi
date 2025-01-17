@@ -21,21 +21,21 @@ pub enum ScanError {
 pub async fn get_access_point<'w>(
     controller: &mut WifiController<'w>,
 ) -> Result<ClientConfiguration, ScanError> {
-    // If we specified an AP via environment variables, use that.
-    // #[allow(clippy::const_is_empty)]
-    // if !SSID.is_empty() {
-    //     let cc = ClientConfiguration {
-    //         ssid: String::from_str(SSID).unwrap(),
-    //         auth_method: if PASSWORD.is_empty() {
-    //             AuthMethod::None
-    //         } else {
-    //             AuthMethod::WPA2Personal
-    //         },
-    //         password: String::from_str(PASSWORD).unwrap(),
-    //         ..Default::default()
-    //     };
-    //     return Ok(cc);
-    // }
+    //If we specified an AP via environment variables, use that.
+    #[allow(clippy::const_is_empty)]
+    if !SSID.is_empty() {
+        let cc = ClientConfiguration {
+            ssid: String::from_str(SSID).unwrap(),
+            auth_method: if PASSWORD.is_empty() {
+                AuthMethod::None
+            } else {
+                AuthMethod::WPA2Personal
+            },
+            password: String::from_str(PASSWORD).unwrap(),
+            ..Default::default()
+        };
+        return Ok(cc);
+    }
 
     println!("Starting wifi for scan");
     controller.start_async().await.unwrap();
