@@ -3,9 +3,7 @@ use core::str::FromStr;
 use embassy_time::{Duration, Timer};
 use esp_backtrace as _;
 use esp_println::println;
-use esp_wifi::wifi::{
-    AuthMethod, ClientConfiguration, Configuration, WifiController, WifiError, WifiEvent, WifiState,
-};
+use esp_wifi::wifi::{AuthMethod, ClientConfiguration, Configuration, WifiController, WifiError};
 use heapless::String;
 use log::{info, warn};
 
@@ -70,7 +68,7 @@ pub async fn get_access_point<'w>(
                         ap.ssid, ap.channel, ap.signal_strength
                     );
 
-                    controller.disconnect().unwrap();
+                    controller.stop_async().await.unwrap();
                     return Ok(ClientConfiguration {
                         ssid: ap.ssid.clone(),
                         channel: Some(ap.channel),
@@ -103,18 +101,26 @@ pub async fn connection(mut controller: WifiController<'static>, client_config: 
     println!("start connection task");
     println!("Device capabilities: {:?}", controller.capabilities());
     loop {
-        if esp_wifi::wifi::wifi_state() == WifiState::StaConnected {
-            // wait until we're no longer connected
-            controller.wait_for_event(WifiEvent::StaDisconnected).await;
-            Timer::after(Duration::from_millis(5000)).await
+        // This should never trigger, but double check.
+        while matches!(controller.is_started(), Ok(true)) {
+            println!("Waiting for wifi to stop");
+            Timer::after(Duration::from_millis(5000)).await;
         }
 
-        if !matches!(controller.is_started(), Ok(true)) {
-            controller.set_configuration(&client_config).unwrap();
-            println!("Starting wifi");
-            controller.start_async().await.unwrap();
-            println!("Wifi started!");
-        }
+        println!("Setting configuration");
+        controller.set_configuration(&client_config).unwrap();
+
+        println!("Starting wifi");
+        controller.start_async().await.unwrap();
+
+        // Waiting for the controller to be marked as started should
+        // not be necessary according to esp-hal example wifi_embassy_dhcp.rs
+        // but maybe it is.
+
+        // while !matches!(controller.is_started(), Ok(true)) {
+        //     Timer::after(Duration::from_millis(500)).await
+        // }
+        // println!("Wifi started!");
 
         println!("About to connect...");
         match controller.connect_async().await {
