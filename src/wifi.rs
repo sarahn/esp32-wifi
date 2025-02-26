@@ -6,9 +6,10 @@ use esp_println::println;
 use esp_wifi::wifi::{AuthMethod, ClientConfiguration, Configuration, WifiController, WifiError};
 use heapless::String;
 use log::{info, warn};
+use esp_wifi::wifi::{WifiEvent, WifiState};
 
-const SSID: &str = env!("SSID");
-const PASSWORD: &str = env!("PASSWORD");
+const SSID: Option<&str> = option_env!("SSID");
+const PASSWORD: Option<&str> = option_env!("PASSWORD");
 
 #[derive(Debug)]
 pub enum ScanError {
@@ -21,15 +22,16 @@ pub async fn get_access_point<'w>(
 ) -> Result<ClientConfiguration, ScanError> {
     //If we specified an AP via environment variables, use that.
     #[allow(clippy::const_is_empty)]
-    if !SSID.is_empty() {
+    if !SSID.unwrap_or("").is_empty() {
+        println!("Using default SSID {}", SSID.unwrap());
         let cc = ClientConfiguration {
-            ssid: String::from_str(SSID).unwrap(),
-            auth_method: if PASSWORD.is_empty() {
+            ssid: String::from_str(SSID.unwrap()).unwrap(),
+            auth_method: if PASSWORD.unwrap_or("").is_empty() {
                 AuthMethod::None
             } else {
                 AuthMethod::WPA2Personal
             },
-            password: String::from_str(PASSWORD).unwrap(),
+            password: String::from_str(PASSWORD.unwrap()).unwrap(),
             ..Default::default()
         };
         return Ok(cc);
@@ -96,33 +98,28 @@ pub async fn get_access_point<'w>(
     Err(ScanError::NoPublicNetworks)
 }
 
+
 #[embassy_executor::task]
 pub async fn connection(mut controller: WifiController<'static>, client_config: Configuration) {
     println!("start connection task");
     println!("Device capabilities: {:?}", controller.capabilities());
     loop {
-        // This should never trigger, but double check.
-        while matches!(controller.is_started(), Ok(true)) {
-            println!("Waiting for wifi to stop");
-            Timer::after(Duration::from_millis(5000)).await;
+        match esp_wifi::wifi::wifi_state() {
+            WifiState::StaConnected => {
+                // wait until we're no longer connected
+                controller.wait_for_event(WifiEvent::StaDisconnected).await;
+                Timer::after(Duration::from_millis(5000)).await
+            }
+            _ => {}
         }
-
-        println!("Setting configuration");
-        controller.set_configuration(&client_config).unwrap();
-
-        println!("Starting wifi");
-        controller.start_async().await.unwrap();
-
-        // Waiting for the controller to be marked as started should
-        // not be necessary according to esp-hal example wifi_embassy_dhcp.rs
-        // but maybe it is.
-
-        // while !matches!(controller.is_started(), Ok(true)) {
-        //     Timer::after(Duration::from_millis(500)).await
-        // }
-        // println!("Wifi started!");
-
+        if !matches!(controller.is_started(), Ok(true)) {
+            controller.set_configuration(&client_config).unwrap();
+            println!("Starting wifi");
+            controller.start_async().await.unwrap();
+            println!("Wifi started!");
+        }
         println!("About to connect...");
+
         match controller.connect_async().await {
             Ok(_) => println!("Wifi connected!"),
             Err(e) => {
